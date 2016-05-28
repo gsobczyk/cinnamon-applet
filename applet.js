@@ -34,6 +34,7 @@
  const MAX_BACK_START = 180;
  const BACK_START_STEP = 5;
  const SLIDER_STEP = BACK_START_STEP / MAX_BACK_START;
+ const MAX_SUGGESTIONS = 50;
 
  /* Local imports */
  const AppletDir = imports.ui.appletManager.appletMeta[AppletUUID].path;
@@ -124,38 +125,23 @@ HamsterBox.prototype = {
             hint_text: _("Enter activity..."),
             style_class: 'popup-menu-item',
             style: 'selected-color: black;'});
-        this._textEntry.clutter_text.connect('activate', Lang.bind(this, this._onEntryActivated));
+        // this._textEntry.clutter_text.connect('activate', Lang.bind(this, this._onEntryActivated));
         this._textEntry.clutter_text.connect('key-release-event', Lang.bind(this, this._onKeyReleaseEvent));
-
 
         box.add(this._textEntry);
 
-        // autocomplete popup - couldn't spark it up just yet
-        //this._popup = new PopupMenu.PopupComboMenu(this._textEntry);
-
-        label = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
-        label.set_text(_("Todays activities"));
-        // box.add(label);
-
-        let container = new St.BoxLayout({});
-        container.set_vertical(true);
-        this.activities = new St.Table();
-        container.add(this.activities);
-        let scrollbox = new St.ScrollView();
-        scrollbox.add_actor(container);
-        // box.add(scrollbox);
-        
-        this.summaryLabel = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
-        // box.add(this.summaryLabel);
-
-
-        this.addActor(box);
+        this.addActor(box, {expand:true, span: -1});
 
         this.autocompleteActivities = [];
         this.runningActivitiesQuery = null;
 
         this._prevText = "";
     },
+
+    // _onEntryActivated: function() {
+    //     this.emit('activate');
+    //     this._textEntry.set_text('');
+    // },
 
     focus: function() {
         global.stage.set_key_focus(this._textEntry);
@@ -165,13 +151,7 @@ HamsterBox.prototype = {
         global.stage.set_key_focus(null);
     },
 
-    _onEntryActivated: function() {
-        this.emit('activate');
-        this._textEntry.set_text('');
-    },
-
-
-    _getActivities: function(activitytext) {
+    _getActivitiesAndFillSuggestions: function(activitytext) {
         if (this.runningActivitiesQuery){
             return this.autocompleteActivities;
         }
@@ -185,20 +165,15 @@ HamsterBox.prototype = {
         this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, function([response], err) {
             this.runningActivitiesQuery = false;
             this.autocompleteActivities = response;
-            // global.log("size: " + response.length);
-            // if (response.length > 1){
-            //     global.log("size: " + response.length);
-            //     global.log("first: " + response[0]);
-            // }
-            this.fillSuggestions([response]);
+            this._fillSuggestions([response]);
         }));
 
         return this.autocompleteActivities;
     },
 
-    fillSuggestions: function([activities]) {
+    _fillSuggestions: function([activities]) {
         // global.log("fill suggestions start, length: " + activities.length);
-        for (var i=0; i < activities.length && i < 20; i++){
+        for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
             let fact = Stuff.activityToFact([activities[i]]);
             let factStr = Stuff.factToStr(fact);
             let factItem = new FactPopupMenuItem(fact);
@@ -215,41 +190,9 @@ HamsterBox.prototype = {
         }
     },
 
-    _getCategories: function() {
-        if (this.runningCategoriesQuery)
-            return this.autocompleteCategories;
-
-        this.runningCategoriesQuery = true;
-        this.proxy.GetCategoriesRemote(Lang.bind(this, function([response], err) {
-            this.runningCategoriesQuery = false;
-            this.autocompleteCategories = response;
-        }));
-
-        return this.autocompleteCategories;
-    },
-
     _onKeyReleaseEvent: function(textItem, evt) {
         let symbol = evt.get_key_symbol();
         let text = this._textEntry.get_text().toLowerCase();
-        let starttime = "";
-        let activitytext = text;
-
-        // Don't include leading times in the activity autocomplete
-        let match = [];
-        if ((match = text.match(/^\d\d:\d\d /)) ||
-            (match = text.match(/^-\d+ /))) {
-            starttime = text.substring(0, match[0].length);
-            activitytext = text.substring(match[0].length);
-        }
-
-        // if nothing has changed or we still have selection then that means
-        // that special keys are at play and we don't attempt to autocomplete
-        if (activitytext == "" ||
-            this._prevText == text ||
-            this._textEntry.clutter_text.get_selection()) {
-            return;
-        }
-        this._prevText = text;
 
         // ignore deletions
         let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
@@ -257,49 +200,9 @@ HamsterBox.prototype = {
             if (symbol == key)
                 return;
         }
+        
+        this._getActivitiesAndFillSuggestions(text);
 
-        // category completion
-        let atIndex = text.indexOf("@");
-        if (atIndex != -1) {
-            activitytext = this._textEntry.get_text().substring(0, atIndex);
-            let categorytext = text.substring(atIndex+1);
-            let allCategories = this._getCategories();
-            for each (var cat in allCategories) {
-                let completion = cat[1];
-                if (completion.toLowerCase().substring(0, categorytext.length) == categorytext) {
-                    this.prevText = text;
-                    completion = starttime + activitytext + "@" + completion;
-
-                    this._textEntry.set_text(completion);
-                    this._textEntry.clutter_text.set_selection(text.length, completion.length);
-
-                    this._prevText = completion.toLowerCase();
-
-                    return;
-                }
-            }
-        }
-
-        // activity completion
-        let allActivities = this._getActivities(activitytext);
-        // global.log("allActivities size: %s".format(allActivities.length));
-        // this.fillSuggestions(allActivities);
-        for each (var rec in allActivities) {
-            let completion = rec[0];
-            if (rec[1].length > 0)
-                completion += "@" + rec[1];
-            if (completion.toLowerCase().substring(0, activitytext.length) == activitytext) {
-                this.prevText = text;
-                completion = starttime + completion;
-
-                this._textEntry.set_text(completion);
-                this._textEntry.clutter_text.set_selection(text.length, completion.length);
-
-                this._prevText = completion.toLowerCase();
-
-                return;
-            }
-        }
     }
 };
 
@@ -346,7 +249,7 @@ HamsterApplet.prototype = {
         // Add HamsterBox to menu
         this.suggestions = new PopupMenu.PopupSubMenuMenuItem(_("Suggestions"));
         let item = new HamsterBox(this.suggestions);
-        item.connect('activate', Lang.bind(this, this._onActivityEntry));
+        // item.connect('activate', Lang.bind(this, this._onActivityEntry));
         this.activityEntry = item;
         this.activityEntry.proxy = this._proxy; // lazy proxying
         this.menu.addMenuItem(item);
@@ -486,12 +389,9 @@ HamsterApplet.prototype = {
 
         this.updatePanelDisplay(fact, today_duration);
 
-        let activities = this.activityEntry.activities;
-        activities.destroy_all_children(); // remove previous entries
         this.recentActivities.menu.box.get_children().forEach(function(c) {
             c.destroy()
         });
-
 
         // ------------------RECENT
         let byCategoryRecent = {};
@@ -518,94 +418,6 @@ HamsterApplet.prototype = {
                 this.recentActivities.menu.addMenuItem(recent);
             }
         }
-        // this.recentActivities.menu.addMenuItem(new PopupMenu.PopupSliderMenuItem(0));
-        // ------------------RECENT
-
-        var i = 0;
-        for each (var fact in facts) {
-            let label;
-
-            label = new St.Label({style_class: 'popup-menu-item'});
-            let text = "%02d:%02d - ".format(fact.startTime.getHours(), fact.startTime.getMinutes());
-            if (fact.endTime) {
-                text += "%02d:%02d".format(fact.endTime.getHours(), fact.endTime.getMinutes());
-            }
-            label.set_text(text)
-            activities.add(label, {row: i, col: 0, x_expand: false});
-
-            label = new St.Label({style_class: 'popup-menu-item'});
-            let factName = fact.name + (0 < fact.tags.length ? (" #" + fact.tags.join(", #")) : "");
-
-            label.set_text(factName);
-            activities.add(label, {row: i, col: 1});
-
-            label = new St.Label({style_class: 'popup-menu-item'});
-            label.set_text(Stuff.formatDurationHuman(fact.delta));
-            activities.add(label, {row: i, col: 2, x_expand: false});
-
-
-            let icon;
-            let button;
-
-            button = new St.Button();
-
-            icon = new St.Icon({icon_name: "view-list-symbolic",
-                style_class: 'popup-menu-icon'});
-
-            button.set_child(icon);
-            button.fact = fact;
-            button.connect('clicked', Lang.bind(this, function(button, event) {
-                this._windowsProxy.editSync(GLib.Variant.new('i', [button.fact.id]));
-                this.menu.close();
-            }));
-            activities.add(button, {row: i, col: 3});
-
-
-            if (!this.currentActivity ||
-                this.currentActivity.name != fact.name ||
-                this.currentActivity.category != fact.category ||
-                this.currentActivity.tags.join(",") != fact.tags.join(",")) {
-                button = new St.Button();
-
-                icon = new St.Icon({icon_name: "media-playback-start-symbolic",
-                    style_class: 'popup-menu-icon'});
-
-                button.set_child(icon);
-                button.fact = fact;
-
-                button.connect('clicked', Lang.bind(this, function(button, event) {
-                    let factStr = Stuff.factToStr(this.fact);
-                    // let start_time = new Date().getTime()/1000;
-                    global.log(factStr + " - start: " + Stuff.epochSeconds());
-                    //1464011762
-                    //1464005682515
-                    this._proxy.AddFactRemote(factStr, Stuff.epochSeconds(), 0, false, Lang.bind(this, function(response, err) {
-                        // not interested in the new id - this shuts up the warning
-                    }));
-                    this.refresh();
-                    this.menu.close();
-                }));
-
-                activities.add(button, {row: i, col: 4});
-            }
-
-            i += 1;
-        }
-
-        let byCategory = {};
-        let categories = [];
-        for each (var fact in facts) {
-            byCategory[fact.category] = (byCategory[fact.category] || 0) + fact.delta;
-            if (categories.indexOf(fact.category) == -1)
-                categories.push(fact.category);
-        }
-
-        let label = "";
-        for each (var category in categories) {
-            label += category + ": " + Stuff.formatDurationHours(byCategory[category]) +  ", ";
-        }
-        label = label.slice(0, label.length - 2); // strip trailing comma
-        this.activityEntry.summaryLabel.set_text(label);
     },
 
 
@@ -657,14 +469,14 @@ HamsterApplet.prototype = {
 
     _onAppletSettingsActivate: function() {
         GLib.spawn_command_line_async(this.path + '/prefs.js');
-    },
-
-    _onActivityEntry: function() {
-        let text = this.activityEntry._textEntry.get_text();
-        this._proxy.AddFactRemote(text, 0, 0, false, Lang.bind(this, function(response, err) {
-            // not interested in the new id - this shuts up the warning
-        }));
     }
+
+    // _onActivityEntry: function() {
+    //     let text = this.activityEntry._textEntry.get_text();
+    //     this._proxy.AddFactRemote(text, 0, 0, false, Lang.bind(this, function(response, err) {
+    //         // not interested in the new id - this shuts up the warning
+    //     }));
+    // }
 };
 
 
@@ -737,11 +549,11 @@ FactPopupMenuItem.prototype = {
         // global.log("key: " + symbol);
         if (symbol == Clutter.plus || symbol == Clutter.equal || symbol == KEYPAD_PLUS || symbol == Clutter.Page_Up) {
             this._modifySliderValue(SLIDER_STEP);
-            global.log("up");
+            // global.log("up");
             return Clutter.EVENT_STOP;
         } else if (symbol == Clutter.minus || symbol == Clutter.underscore || symbol == KEYPAD_MINUS || symbol == Clutter.Page_Down) {
             this._modifySliderValue(-SLIDER_STEP);
-            global.log("down");
+            // global.log("down");
             return Clutter.EVENT_STOP;
         } else if (symbol == Clutter.KEY_space || symbol == Clutter.KEY_Return) {
             this.activate(evt);
