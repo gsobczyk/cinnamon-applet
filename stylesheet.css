@@ -1,0 +1,21 @@
+.recent-group {
+	padding: .4em 1em;
+	font-style: italic;
+}
+
+.recent-item {
+}
+
+.duration {
+	font-weight: bold;
+}
+
+.fact-name {
+	padding-left: 1em;
+	font-weight: bold;
+	max-width: 800px;
+}
+
+.tags {
+	color: orange;
+}

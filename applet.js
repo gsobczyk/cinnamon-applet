@@ -14,48 +14,63 @@
  *
  */
 
-const AppletUUID = "hamster@projecthamster.wordpress.com";
+ const AppletUUID = "hamster@projecthamster.wordpress.com";
 
-const Applet = imports.ui.applet;
-const Clutter = imports.gi.Clutter;
-const GLib = imports.gi.GLib;
-const Gtk = imports.gi.Gtk;
-const Lang = imports.lang;
-const St = imports.gi.St;
-const Main = imports.ui.main;
-const Gio = imports.gi.Gio;
-const PopupMenu = imports.ui.popupMenu;
-const Gettext = imports.gettext;
-const _ = Gettext.gettext;
+ const Applet = imports.ui.applet;
+ const Clutter = imports.gi.Clutter;
+ const GLib = imports.gi.GLib;
+ const Gtk = imports.gi.Gtk;
+ const Lang = imports.lang;
+ const Slider = imports.ui.slider;
+ const St = imports.gi.St;
+ const Main = imports.ui.main;
+ const Gio = imports.gi.Gio;
+ const PopupMenu = imports.ui.popupMenu;
+ const Gettext = imports.gettext;
+ const _ = Gettext.gettext;
+ 
+ const KEYPAD_MINUS = 65453;
+ const KEYPAD_PLUS = 65451;
+ const MAX_BACK_START = 180;
+ const BACK_START_STEP = 5;
+ const SLIDER_STEP = BACK_START_STEP / MAX_BACK_START;
 
-/* Local imports */
-const AppletDir = imports.ui.appletManager.appletMeta[AppletUUID].path;
-imports.searchPath.unshift(AppletDir);
-const Stuff = imports.stuff;
-const Convenience = imports.convenience;
+ /* Local imports */
+ const AppletDir = imports.ui.appletManager.appletMeta[AppletUUID].path;
+ imports.searchPath.unshift(AppletDir);
+ const Stuff = imports.stuff;
+ const Convenience = imports.convenience;
 
 // dbus-send --session --type=method_call --print-reply --dest=org.gnome.Hamster /org/gnome/Hamster org.freedesktop.DBus.Introspectable.Introspect
 const ApiProxyIface = '<node> \
 <interface name="org.gnome.Hamster"> \
 <method name="GetTodaysFacts"> \
-  <arg direction="out" type="a(iiissisasii)" /> \
+<arg direction="out" type="a(iiissisasiib)" /> \
 </method> \
 <method name="StopTracking"> \
-  <arg direction="in"  type="v" name="end_time" /> \
+<arg direction="in"  type="v" name="end_time" /> \
 </method> \
 <method name="AddFact"> \
-  <arg direction="in"  type="s" name="fact" /> \
-  <arg direction="in"  type="i" name="start_time" /> \
-  <arg direction="in"  type="i" name="end_time" /> \
-  <arg direction="in"  type="b" name="temporary" /> \
-  <arg direction="out" type="i" /> \
+<arg direction="in"  type="s" name="fact" /> \
+<arg direction="in"  type="i" name="start_time" /> \
+<arg direction="in"  type="i" name="end_time" /> \
+<arg direction="in"  type="b" name="temporary" /> \
+<arg direction="out" type="i" /> \
+</method> \
+<method name="GetFacts"> \
+<arg direction="in"  type="u" name="start_date" /> \
+<arg direction="in"  type="u" name="end_date" /> \
+<arg direction="in"  type="s" name="search_terms" /> \
+<arg direction="in"  type="u" name="limit" /> \
+<arg direction="in"  type="b" name="asc_by_date" /> \
+<arg direction="out" type="a(iiissisasiib)" /> \
 </method> \
 <method name="GetActivities"> \
-  <arg direction="in"  type="s" name="search" /> \
-  <arg direction="out" type="a(ss)" /> \
+<arg direction="in"  type="s" name="search" /> \
+<arg direction="out" type="a(ss)" /> \
 </method> \
 <method name="GetCategories"> \
-  <arg direction="out" type="a(is)" /> \
+<arg direction="out" type="a(is)" /> \
 </method> \
 <signal name="FactsChanged"></signal> \
 <signal name="ActivitiesChanged"></signal> \
@@ -69,7 +84,7 @@ let ApiProxy = Gio.DBusProxy.makeProxyWrapper(ApiProxyIface);
 const WindowsProxyIface = '<node> \
 <interface name="org.gnome.Hamster.WindowServer"> \
 <method name="edit"> \
-  <arg direction="in"  type="v" name="id" /> \
+<arg direction="in"  type="v" name="id" /> \
 </method> \
 <method name="overview"></method> \
 <method name="preferences"></method> \
@@ -99,11 +114,11 @@ HamsterBox.prototype = {
         box.add(label);
 
         this._textEntry = new St.Entry({name: 'searchEntry',
-                                        can_focus: true,
-                                        track_hover: false,
-                                        hint_text: _("Enter activity..."),
-                                        style_class: 'popup-menu-item',
-                                        style: 'selected-color: black;'});
+            can_focus: true,
+            track_hover: false,
+            hint_text: _("Enter activity..."),
+            style_class: 'popup-menu-item',
+            style: 'selected-color: black;'});
         this._textEntry.clutter_text.connect('activate', Lang.bind(this, this._onEntryActivated));
         this._textEntry.clutter_text.connect('key-release-event', Lang.bind(this, this._onKeyReleaseEvent));
 
@@ -115,22 +130,18 @@ HamsterBox.prototype = {
 
         label = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
         label.set_text(_("Todays activities"));
-        box.add(label);
+        // box.add(label);
 
-        let scrollbox = new St.ScrollView();
-        box.add(scrollbox);
-
-        // Since St.Table does not implement StScrollable, we create a
-        // container object that does.
         let container = new St.BoxLayout({});
         container.set_vertical(true);
-        scrollbox.add_actor(container);
-
         this.activities = new St.Table();
         container.add(this.activities);
-
+        let scrollbox = new St.ScrollView();
+        scrollbox.add_actor(container);
+        // box.add(scrollbox);
+        
         this.summaryLabel = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
-        box.add(this.summaryLabel);
+        // box.add(this.summaryLabel);
 
 
         this.addActor(box);
@@ -254,7 +265,6 @@ HamsterBox.prototype = {
     }
 };
 
-
 function HamsterApplet(metadata, orientation, panel_height) {
     this._init(metadata, orientation, panel_height);
 }
@@ -272,8 +282,8 @@ HamsterApplet.prototype = {
 
 
         this._windowsProxy = new WindowsProxy(Gio.DBus.session,
-                                              "org.gnome.Hamster.WindowServer",
-                                              "/org/gnome/Hamster/WindowServer");
+          "org.gnome.Hamster.WindowServer",
+          "/org/gnome/Hamster/WindowServer");
 
         this._settings = Convenience.getSettings();
         this.path = metadata.path;
@@ -292,6 +302,7 @@ HamsterApplet.prototype = {
         // Create applet menu
         this.menuManager = new PopupMenu.PopupMenuManager(this);
         this.menu = new Applet.AppletPopupMenu(this, orientation);
+        this.menuOpen = false;
         this.menuManager.addMenu(this.menu);
 
         // Add HamsterBox to menu
@@ -300,6 +311,9 @@ HamsterApplet.prototype = {
         this.activityEntry = item;
         this.activityEntry.proxy = this._proxy; // lazy proxying
         this.menu.addMenuItem(item);
+
+        this.recentActivities = new PopupMenu.PopupSubMenuMenuItem(_("Recent activities"));
+        this.menu.addMenuItem(this.recentActivities);
 
         // overview
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -332,8 +346,10 @@ HamsterApplet.prototype = {
         this.menu.connect('open-state-changed', Lang.bind(this,
             function(menu, open) {
                 if (open) {
+                    this.menuOpen = true;
                     this.activityEntry.focus();
                 } else {
+                    this.menuOpen = false;
                     this.activityEntry.blur();
                 }
             }
@@ -343,16 +359,16 @@ HamsterApplet.prototype = {
         this.hotkey = "" + this._settings.get_strv("show-hamster-dropdown");
         try {
             Main.keybindingManager.addHotKey("show-hamster-menu",
-                    this.hotkey,
-                    Lang.bind(this, this.on_hotkey_triggered));
+                this.hotkey,
+                Lang.bind(this, this.on_hotkey_triggered));
         } catch (e) {
             global.logError(e);
         }
 
         // load data
         this.facts = null;
-        // refresh the label every 60 secs
-        this.timeout = GLib.timeout_add_seconds(0, 60, Lang.bind(this, this.refresh));
+        // refresh the label every 30 secs
+        this.timeout = GLib.timeout_add_seconds(0, 30, Lang.bind(this, this.refresh));
         this.refresh();
     },
 
@@ -372,30 +388,96 @@ HamsterApplet.prototype = {
     },
 
     refresh: function(proxy, sender) {
-        this._proxy.GetTodaysFactsRemote(Lang.bind(this, this._refresh));
+        if (!this.menuOpen){
+            this._proxy.GetTodaysFactsRemote(Lang.bind(this, this._refreshRecent));
+        } else {
+            global.log("skipping refresh - menu is open");
+        }
         return true;
     },
 
-    _refresh: function([response], err) {
+    _refreshRecent: function([todayFacts], err) {
+        let startDate = Stuff.epochSecondsMinusDays(7);
+        let endDate = Stuff.epochSeconds();
+        let search = "";
+        let limit = 30;
+        let ascByDate = false;
+        // var todayResp = todayFacts;
+        this._proxy.GetFactsRemote(startDate, endDate, search, limit, ascByDate, Lang.bind(this, function([recentFacts], err) {
+            // global.log("retrieved " + recentFacts.length + " facts");
+            this._refresh([recentFacts], [todayFacts], err);
+        }));
+        return true;
+    },
+
+    _refresh: function([recentFactsResp], [todayFactsResp], err) {
         let facts = [];
+        let recentFacts = [];
 
         if (err) {
             log(err);
-        } else if (response.length > 0) {
-            facts = Stuff.fromDbusFacts(response);
+        } 
+        if (todayFactsResp.length > 0) {
+            facts = Stuff.fromDbusFacts(todayFactsResp);
         }
+        if (recentFactsResp.length > 0) {
+            recentFacts = Stuff.fromDbusFacts(recentFactsResp);
+        }
+        // global.log("passed: %s today and %s recent facts".format(todayFactsResp.length, recentFactsResp.length));
+        // global.log("converted: %s today and %s recent facts".format(facts.length, recentFacts.length));
 
         this.currentActivity = null;
+        let currentActivityStr = "";
         let fact = null;
         if (facts.length) {
             fact = facts[facts.length - 1];
-            if (!fact.endTime)
+            if (!fact.endTime) {
                 this.currentActivity = fact;
+                currentActivityStr = Stuff.factToStr(fact);
+            }
         }
-        this.updatePanelDisplay(fact);
+
+        let today_duration = 0;
+        for each (var fact in facts) {
+            today_duration += fact.delta;
+        }
+
+        this.updatePanelDisplay(fact, today_duration);
 
         let activities = this.activityEntry.activities;
         activities.destroy_all_children(); // remove previous entries
+        this.recentActivities.menu.box.get_children().forEach(function(c) {
+            c.destroy()
+        });
+
+
+        // ------------------RECENT
+        let byCategoryRecent = {};
+        let categoriesRecent = [];
+        let recentFactsStr = [];
+        // global.log("grouping facts, size: " + recentFacts.length);
+        for each (var fact in recentFacts) {
+            if (categoriesRecent.indexOf(fact.category) == -1){
+                categoriesRecent.push(fact.category);
+                byCategoryRecent[fact.category] = [];
+            }
+            let factStr = Stuff.factToStr(fact);
+            if (recentFactsStr.indexOf(factStr) == -1 && currentActivityStr != factStr){
+                recentFactsStr.push(factStr);
+                byCategoryRecent[fact.category].push(fact);
+            }
+        }
+
+        for each (var category in categoriesRecent) {
+            this.recentActivities.menu.addActor(new St.Label({text: category, style_class: 'recent-group'}));
+            for each (var fact in byCategoryRecent[category]) {
+                // global.log("preparing menu item for fact: " + fact.name);
+                let recent = new FactPopupMenuItem(fact, {style_class: 'recent-item'});
+                this.recentActivities.menu.addMenuItem(recent);
+            }
+        }
+        // this.recentActivities.menu.addMenuItem(new PopupMenu.PopupSliderMenuItem(0));
+        // ------------------RECENT
 
         var i = 0;
         for each (var fact in facts) {
@@ -410,7 +492,9 @@ HamsterApplet.prototype = {
             activities.add(label, {row: i, col: 0, x_expand: false});
 
             label = new St.Label({style_class: 'popup-menu-item'});
-            label.set_text(fact.name + (0 < fact.tags.length ? (" #" + fact.tags.join(", #")) : ""));
+            let factName = fact.name + (0 < fact.tags.length ? (" #" + fact.tags.join(", #")) : "");
+
+            label.set_text(factName);
             activities.add(label, {row: i, col: 1});
 
             label = new St.Label({style_class: 'popup-menu-item'});
@@ -423,8 +507,8 @@ HamsterApplet.prototype = {
 
             button = new St.Button();
 
-            icon = new St.Icon({icon_name: "document-open-symbolic",
-                                style_class: 'popup-menu-icon'});
+            icon = new St.Icon({icon_name: "view-list-symbolic",
+                style_class: 'popup-menu-icon'});
 
             button.set_child(icon);
             button.fact = fact;
@@ -442,22 +526,21 @@ HamsterApplet.prototype = {
                 button = new St.Button();
 
                 icon = new St.Icon({icon_name: "media-playback-start-symbolic",
-                                    style_class: 'popup-menu-icon'});
+                    style_class: 'popup-menu-icon'});
 
                 button.set_child(icon);
                 button.fact = fact;
 
                 button.connect('clicked', Lang.bind(this, function(button, event) {
-                    let factStr = button.fact.name
-                                  + "@" + button.fact.category
-                                  + ", " + (button.fact.description);
-                    if (button.fact.tags.length) {
-                        factStr += " #" + button.fact.tags.join(", #");
-                    }
-
-                    this._proxy.AddFactRemote(factStr, 0, 0, false, Lang.bind(this, function(response, err) {
+                    let factStr = Stuff.factToStr(this.fact);
+                    // let start_time = new Date().getTime()/1000;
+                    global.log(factStr + " - start: " + Stuff.epochSeconds());
+                    //1464011762
+                    //1464005682515
+                    this._proxy.AddFactRemote(factStr, Stuff.epochSeconds(), 0, false, Lang.bind(this, function(response, err) {
                         // not interested in the new id - this shuts up the warning
                     }));
+                    this.refresh();
                     this.menu.close();
                 }));
 
@@ -484,13 +567,13 @@ HamsterApplet.prototype = {
     },
 
 
-    updatePanelDisplay: function(fact) {
+    updatePanelDisplay: function(fact, today_duration) {
         // 0 = show label, 1 = show icon + duration, 2 = just icon
         let appearance = this._settings.get_int("panel-appearance");
 
         /* Format label strings and icon */
         if (fact && !fact.endTime) {
-            this._label_short = Stuff.formatDuration(fact.delta);
+            this._label_short = Stuff.formatDuration(fact.delta) + " / " + Stuff.formatDuration(today_duration);
             this._label_long = this._label_short + " " + fact.name;
             this._icon_name = "hamster-tracking";
         } else {
@@ -502,10 +585,10 @@ HamsterApplet.prototype = {
         /* Configure based on appearance setting */
         if (appearance == 0) {
             this.set_applet_icon_symbolic_name("none");
-            this.set_applet_label(this._label_long);
+            this.set_applet_label(Stuff.shortenLabel(this._label_long));
         } else if (appearance == 1) {
             this.set_applet_icon_symbolic_name(this._icon_name);
-            this.set_applet_label(this._label_short);
+            this.set_applet_label(Stuff.shortenLabel(this._label_short));
         } else {
             this.set_applet_icon_symbolic_name(this._icon_name);
             this.set_applet_label("");
@@ -515,15 +598,7 @@ HamsterApplet.prototype = {
 
 
     _onStopTracking: function() {
-        let now = new Date();
-        let epochSeconds = Date.UTC(now.getFullYear(),
-                                    now.getMonth(),
-                                    now.getDate(),
-                                    now.getHours(),
-                                    now.getMinutes(),
-                                    now.getSeconds());
-        epochSeconds = Math.floor(epochSeconds / 1000);
-        this._proxy.StopTrackingRemote(GLib.Variant.new('i', [epochSeconds]));
+        this._proxy.StopTrackingRemote(GLib.Variant.new('i', [Stuff.epochSeconds()]));
     },
 
     _onShowHamsterActivate: function() {
@@ -550,9 +625,107 @@ HamsterApplet.prototype = {
     }
 };
 
+
+
+function FactPopupMenuItem() {
+ this._init.apply(this, arguments);
+}
+
+FactPopupMenuItem.prototype = {
+
+    __proto__: PopupMenu.PopupBaseMenuItem.prototype,
+
+    _init: function(fact, params) {
+        PopupMenu.PopupBaseMenuItem.prototype._init.call(this, params);
+        this.fact = fact;
+        this.backStart = 0;
+        this._proxy = new ApiProxy(Gio.DBus.session, 'org.gnome.Hamster', '/org/gnome/Hamster');
+
+        this.factNameLabel = new St.Label({ text: this._generateFactLabel(), style_class: 'fact-name'})
+        let factTags = (0 < fact.tags.length ? ("#" + fact.tags.join(", #")) : "")
+        let factTagsLabel = new St.Label({ text: " " + factTags, style_class: 'tags'})
+        let time = "(%02d.%02d %02d:%02d)".format(fact.startTime.getDate(), fact.startTime.getMonth(), fact.startTime.getHours(), fact.startTime.getMinutes());
+        let timeLabel = new St.Label({ text: " " + time});
+
+        this.addActor(this.factNameLabel);
+        this.addActor(factTagsLabel, {align: St.Align.END});
+        this.addActor(timeLabel);
+
+        this.slider = new Slider.Slider(1);//only for range fix (from 0 to 1)
+        // this.addActor(this.slider.actor);
+
+        this.connect('activate', Lang.bind(this, this._onStartActivity));
+        this.actor.connect('key-press-event', Lang.bind(this, this._onKeyPressEvent));
+        this.actor.connect('scroll-event', Lang.bind(this, this._onScrollEvent));
+        this.slider.connect('value-changed', Lang.bind(this, this._sliderChanged));
+    },
+
+    _onScrollEvent: function (actor, event) {
+        let direction = event.get_scroll_direction();
+        // global.log("sroll");
+        if (direction == Clutter.ScrollDirection.DOWN) {
+            this._modifySliderValue(-SLIDER_STEP);
+        }
+        else if (direction == Clutter.ScrollDirection.UP) {
+            this._modifySliderValue(SLIDER_STEP);
+        }
+        // global.log("slider value is set");
+    },
+
+    _modifySliderValue: function(delta) {
+        // global.log("delta: " + delta);
+        this.slider.setValue(this.slider._value + delta);
+        this._sliderChanged(this.slider, this.slider._value);
+    },
+
+    _onStartActivity: function (actor, event) {
+        let factStr = Stuff.factToStr(this.fact);
+        global.log(factStr + " - start: " + Stuff.epochSeconds());
+        this._proxy.AddFactRemote(factStr, Stuff.epochSeconds() - this.backStart * 60, 0, false, Lang.bind(this, function(response, err) {
+            // not interested in the new id - this shuts up the warning
+        }));
+        // this.menu.close();
+    },
+
+    _onKeyPressEvent: function(actor, evt) {
+        let symbol = evt.get_key_symbol();
+        // global.log("key: " + symbol);
+        if (symbol == Clutter.plus || symbol == Clutter.equal || symbol == KEYPAD_PLUS || symbol == Clutter.Page_Up) {
+            this._modifySliderValue(SLIDER_STEP);
+            global.log("up");
+            return Clutter.EVENT_STOP;
+        } else if (symbol == Clutter.minus || symbol == Clutter.underscore || symbol == KEYPAD_MINUS || symbol == Clutter.Page_Down) {
+            this._modifySliderValue(-SLIDER_STEP);
+            global.log("down");
+            return Clutter.EVENT_STOP;
+        } else if (symbol == Clutter.KEY_space || symbol == Clutter.KEY_Return) {
+            this.activate(evt);
+            // this._onStartActivity(actor, evt);
+            return Clutter.EVENT_STOP;
+        }
+        return Clutter.EVENT_PROPAGATE;
+    },
+
+    _generateFactLabel: function(){
+        let prefix = "";
+        if (this.backStart > 0) {
+            let before = new Date();
+            before.setMinutes(before.getMinutes() - this.backStart);
+            // prefix = "-" + this.backStart + "min ";
+            prefix = "-%smin: %02d:%02d ".format(this.backStart, before.getHours(), before.getMinutes());
+        }
+        return prefix + this.fact.name;
+    },
+
+    _sliderChanged: function(slider, value) {
+        this.backStart = Math.round((1 - value) * MAX_BACK_START);
+        this.factNameLabel.set_text(this._generateFactLabel());
+    }
+};
+
 function main(metadata, orientation, panel_height) {
     /* Use local translations
-     * TODO: Update translations to make them specific to this applet */
+    * TODO: Update translations to make them specific to this applet */
     Gettext.bindtextdomain("hamster-shell-extension", metadata.path + "/locale");
     Gettext.textdomain("hamster-shell-extension");
     return new HamsterApplet(metadata, orientation, panel_height);

@@ -1,3 +1,5 @@
+const MAX_LABEL_LENGTH = 70;
+
 function formatDuration(minutes) {
     return "%02d:%02d".format((minutes - minutes % 60) / 60, minutes % 60);
 }
@@ -31,7 +33,7 @@ function fromDbusFact(fact) {
         let res = new Date(timestamp);
         return new Date(res.setUTCMinutes(res.getUTCMinutes() + res.getTimezoneOffset()));
     }
-
+    
     return {
         name: fact[4],
         startTime: UTCToLocal(fact[1]*1000),
@@ -42,7 +44,8 @@ function fromDbusFact(fact) {
         tags: fact[7],
         date: UTCToLocal(fact[8] * 1000),
         delta: Math.floor(fact[9] / 60), // minutes
-        id: fact[0]
+        id: fact[0],
+        exported: fact[10]
     };
 };
 
@@ -64,4 +67,43 @@ function parseFactString(input) {
         "description": null,
         "tags": null,
     };
+}
+
+function epochSeconds() {
+    let now = new Date();
+    let epochSeconds = Date.UTC(now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds());
+    return Math.floor(epochSeconds / 1000);
+}
+
+function epochSecondsMinusDays(days) {
+    let now = new Date();
+    let epochSeconds = Date.UTC(now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - days,
+        0,
+        0,
+        0);
+    return Math.floor(epochSeconds / 1000);
+}
+
+function shortenLabel(label) {
+    if (label.length>MAX_LABEL_LENGTH){
+        return label.substring(0, MAX_LABEL_LENGTH-3) + "...";
+    }
+    return label;
+}
+
+function factToStr(fact){
+    let factStr = fact.name;
+    factStr += "@" + fact.category;
+    factStr += ", " + (fact.description);
+    if (fact.tags.length) {
+        factStr += " #" + fact.tags.join(", #");
+    }
+    return factStr;
 }
