@@ -69,6 +69,10 @@ const ApiProxyIface = '<node> \
 <arg direction="in"  type="s" name="search" /> \
 <arg direction="out" type="a(ss)" /> \
 </method> \
+<method name="GetExtActivities"> \
+<arg direction="in"  type="s" name="search" /> \
+<arg direction="out" type="a(ss)" /> \
+</method> \
 <method name="GetCategories"> \
 <arg direction="out" type="a(is)" /> \
 </method> \
@@ -103,9 +107,10 @@ function HamsterBox() {
 HamsterBox.prototype = {
     __proto__: PopupMenu.PopupBaseMenuItem.prototype,
 
-    _init: function(itemParams) {
+    _init: function(suggestionsGroup, itemParams) {
         PopupMenu.PopupBaseMenuItem.prototype._init.call(this, {reactive: false});
 
+        this.suggestionsGroup = suggestionsGroup;
         let box = new St.BoxLayout();
         box.set_vertical(true);
 
@@ -166,17 +171,48 @@ HamsterBox.prototype = {
     },
 
 
-    _getActivities: function() {
-        if (this.runningActivitiesQuery)
+    _getActivities: function(activitytext) {
+        if (this.runningActivitiesQuery){
             return this.autocompleteActivities;
+        }
+
+        this.suggestionsGroup.setSensitive(false);
+        this.suggestionsGroup.menu.box.get_children().forEach(function(c) {
+            c.destroy()
+        });
 
         this.runningActivitiesQuery = true;
-        this.proxy.GetActivitiesRemote("", Lang.bind(this, function([response], err) {
+        this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, function([response], err) {
             this.runningActivitiesQuery = false;
             this.autocompleteActivities = response;
+            // global.log("size: " + response.length);
+            // if (response.length > 1){
+            //     global.log("size: " + response.length);
+            //     global.log("first: " + response[0]);
+            // }
+            this.fillSuggestions([response]);
         }));
 
         return this.autocompleteActivities;
+    },
+
+    fillSuggestions: function([activities]) {
+        // global.log("fill suggestions start, length: " + activities.length);
+        for (var i=0; i < activities.length && i < 20; i++){
+            let fact = Stuff.activityToFact([activities[i]]);
+            let factStr = Stuff.factToStr(fact);
+            let factItem = new FactPopupMenuItem(fact);
+            this.suggestionsGroup.menu.addMenuItem(factItem);
+            // global.log("activity: %s".format(factStr));
+        }
+        // global.log("fill suggestions end");
+        if (activities.length>0) {
+            this.suggestionsGroup.setSensitive(true);
+            this.suggestionsGroup.activate(false);
+        } else {
+            this.suggestionsGroup.close(true);
+            this.suggestionsGroup.setSensitive(false);
+        }
     },
 
     _getCategories: function() {
@@ -245,7 +281,9 @@ HamsterBox.prototype = {
         }
 
         // activity completion
-        let allActivities = this._getActivities();
+        let allActivities = this._getActivities(activitytext);
+        // global.log("allActivities size: %s".format(allActivities.length));
+        // this.fillSuggestions(allActivities);
         for each (var rec in allActivities) {
             let completion = rec[0];
             if (rec[1].length > 0)
@@ -306,11 +344,15 @@ HamsterApplet.prototype = {
         this.menuManager.addMenu(this.menu);
 
         // Add HamsterBox to menu
-        let item = new HamsterBox()
+        this.suggestions = new PopupMenu.PopupSubMenuMenuItem(_("Suggestions"));
+        let item = new HamsterBox(this.suggestions);
         item.connect('activate', Lang.bind(this, this._onActivityEntry));
         this.activityEntry = item;
         this.activityEntry.proxy = this._proxy; // lazy proxying
         this.menu.addMenuItem(item);
+
+        this.suggestions.setSensitive(false);
+        this.menu.addMenuItem(this.suggestions);
 
         this.recentActivities = new PopupMenu.PopupSubMenuMenuItem(_("Recent activities"));
         this.menu.addMenuItem(this.recentActivities);
@@ -644,7 +686,10 @@ FactPopupMenuItem.prototype = {
         this.factNameLabel = new St.Label({ text: this._generateFactLabel(), style_class: 'fact-name'})
         let factTags = (0 < fact.tags.length ? ("#" + fact.tags.join(", #")) : "")
         let factTagsLabel = new St.Label({ text: " " + factTags, style_class: 'tags'})
-        let time = "(%02d.%02d %02d:%02d)".format(fact.startTime.getDate(), fact.startTime.getMonth(), fact.startTime.getHours(), fact.startTime.getMinutes());
+        let time = "";
+        if (fact.startTime) {
+            let time = "(%02d.%02d %02d:%02d)".format(fact.startTime.getDate(), fact.startTime.getMonth(), fact.startTime.getHours(), fact.startTime.getMinutes());
+        }
         let timeLabel = new St.Label({ text: " " + time});
 
         this.addActor(this.factNameLabel);

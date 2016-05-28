@@ -33,7 +33,7 @@ function fromDbusFact(fact) {
         let res = new Date(timestamp);
         return new Date(res.setUTCMinutes(res.getUTCMinutes() + res.getTimezoneOffset()));
     }
-    
+
     return {
         name: fact[4],
         startTime: UTCToLocal(fact[1]*1000),
@@ -58,6 +58,21 @@ function fromDbusFacts(facts) {
     return res;
 };
 
+function activityToFact([activity]){
+    return {
+        name: activity[0],
+        startTime: null,
+        endTime: null,
+        description: "",
+        activityId: null,
+        category: activity[1],
+        tags: [],
+        date: null,
+        delta: 0, // minutes
+        id: null,
+        exported: false
+    };
+}
 
 function parseFactString(input) {
     let res = {
