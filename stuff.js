@@ -58,7 +58,7 @@ function fromDbusFacts(facts) {
     return res;
 };
 
-function activityToFact([activity]){
+function activityToFact([activity], tags){
     return {
         name: activity[0],
         startTime: null,
@@ -66,7 +66,7 @@ function activityToFact([activity]){
         description: "",
         activityId: null,
         category: activity[1],
-        tags: [],
+        tags: tags,
         date: null,
         delta: 0, // minutes
         id: null,

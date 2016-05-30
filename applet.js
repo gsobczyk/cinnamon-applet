@@ -133,9 +133,10 @@ HamsterBox.prototype = {
         this.addActor(box, {expand:true, span: -1});
 
         this.autocompleteActivities = [];
+        this.autocompleteActivitiesText = "";
         this.runningActivitiesQuery = null;
 
-        this._prevText = "";
+        // this._prevText = "";
     },
 
     // _onEntryActivated: function() {
@@ -152,29 +153,52 @@ HamsterBox.prototype = {
     },
 
     _getActivitiesAndFillSuggestions: function(activitytext) {
+        let tags = [];
+        var re = /#([^,]+)/g;
+        while ((m = re.exec(activitytext)) !== null) {
+            if (m.index === re.lastIndex) {
+                re.lastIndex++;
+            }
+            tags.push(m[1]);
+        }
+        activitytext = activitytext.split('#', 1)[0].trim();
+        // global.log("tagów: " + tags.length);
+        // global.log("query: " + activitytext);
+        // this.newTags = tags;
+        this.newActivitytext = activitytext;
         if (this.runningActivitiesQuery){
             return this.autocompleteActivities;
         }
+
 
         this.suggestionsGroup.setSensitive(false);
         this.suggestionsGroup.menu.box.get_children().forEach(function(c) {
             c.destroy()
         });
 
-        this.runningActivitiesQuery = true;
-        this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, function([response], err) {
-            this.runningActivitiesQuery = false;
-            this.autocompleteActivities = response;
-            this._fillSuggestions([response]);
-        }));
+        if (this.autocompleteActivitiesText.trim() != activitytext.trim()){
+            this.runningActivitiesQuery = true;
+            this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, function([response], err) {
+                this.runningActivitiesQuery = false;
+                this.autocompleteActivities = response;
+                this.autocompleteActivitiesText = activitytext;
+                this._fillSuggestions([this.autocompleteActivities], [tags]);
+                if (activitytext.trim()!=this.newActivitytext.trim()){
+                    global.log("text are different: '%s' and '%s'".format(activitytext, this.newActivitytext));
+                    // this._getActivitiesAndFillSuggestions(this.newActivitytext);
+                }
+            }));
+        } else {
+            this._fillSuggestions([this.autocompleteActivities], [tags]);
+        }
 
         return this.autocompleteActivities;
     },
 
-    _fillSuggestions: function([activities]) {
+    _fillSuggestions: function([activities], [tags]) {
         // global.log("fill suggestions start, length: " + activities.length);
         for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
-            let fact = Stuff.activityToFact([activities[i]]);
+            let fact = Stuff.activityToFact([activities[i]], tags);
             let factStr = Stuff.factToStr(fact);
             let factItem = new FactPopupMenuItem(fact);
             this.suggestionsGroup.menu.addMenuItem(factItem);
@@ -193,6 +217,7 @@ HamsterBox.prototype = {
     _onKeyReleaseEvent: function(textItem, evt) {
         let symbol = evt.get_key_symbol();
         let text = this._textEntry.get_text().toLowerCase();
+        // let tags = [];
 
         // ignore deletions
         let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
@@ -200,7 +225,7 @@ HamsterBox.prototype = {
             if (symbol == key)
                 return;
         }
-        
+                
         this._getActivitiesAndFillSuggestions(text);
 
     }
