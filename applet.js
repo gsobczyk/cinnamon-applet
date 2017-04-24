@@ -109,6 +109,7 @@ HamsterBox.prototype = {
     __proto__: PopupMenu.PopupBaseMenuItem.prototype,
 
     _init: function(suggestionsGroup, itemParams) {
+		global.log("hamster-applet init start");
         PopupMenu.PopupBaseMenuItem.prototype._init.call(this, {reactive: false});
 
         this.suggestionsGroup = suggestionsGroup;
@@ -119,16 +120,16 @@ HamsterBox.prototype = {
         label.set_text(_("What are you doing?"))
         box.add(label);
 
-        this._textEntry = new St.Entry({name: 'searchEntry',
+        this.textEntry = new St.Entry({name: 'searchEntry',
             can_focus: true,
             track_hover: false,
             hint_text: _("Enter activity..."),
             style_class: 'popup-menu-item',
             style: 'selected-color: black;'});
-        // this._textEntry.clutter_text.connect('activate', Lang.bind(this, this._onEntryActivated));
-        this._textEntry.clutter_text.connect('key-release-event', Lang.bind(this, this._onKeyReleaseEvent));
+        // this.textEntry.clutter_text.connect('activate', Lang.bind(this, this._onEntryActivated));
+        this.textEntry.clutter_text.connect('key-release-event', Lang.bind(this, this._onKeyReleaseEvent));
 
-        box.add(this._textEntry);
+        box.add(this.textEntry);
 
         this.addActor(box, {expand:true, span: -1});
 
@@ -137,22 +138,64 @@ HamsterBox.prototype = {
         this.runningActivitiesQuery = null;
 
         // this._prevText = "";
+		global.log("hamster-applet init finished");
     },
 
     // _onEntryActivated: function() {
     //     this.emit('activate');
-    //     this._textEntry.set_text('');
+    //     this.textEntry.set_text('');
     // },
 
     focus: function() {
-        global.stage.set_key_focus(this._textEntry);
+        global.stage.set_key_focus(this.textEntry);
     },
 
     blur: function() {
         global.stage.set_key_focus(null);
     },
 
-    _getActivitiesAndFillSuggestions: function(activitytext) {
+    _fillSuggestions: function([activities], [tags]) {
+        //global.log("fill suggestions start, length: " + activities.length);
+        for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
+            let fact = Stuff.activityToFact([activities[i]], tags);
+            let factStr = Stuff.factToStr(fact);
+            let factItem = new FactPopupMenuItem(fact);
+            this.suggestionsGroup.menu.addMenuItem(factItem);
+            // global.log("activity: %s".format(factStr));
+        }
+        // global.log("fill suggestions end");
+        if (activities.length>0) {
+            // this.suggestionsGroup.setSensitive(true);
+            this.suggestionsGroup.activate(false);
+        } else {
+            this.suggestionsGroup.close(true);
+            // this.suggestionsGroup.setSensitive(false);
+        }
+    },
+
+    _onKeyReleaseEvent: function(textItem, evt) {
+		global.log("hamster-applet on key release start");
+        let symbol = evt.get_key_symbol();
+
+        // ignore deletions
+        let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
+        let ignoreKeys = [Clutter.Escape]
+        for each (var key in ignoreKeys) {
+            if (symbol == key)
+                return;
+        }
+        if (this.timeoutId){
+            GLib.source_remove(this.timeoutId);
+            this.timeoutId = null;
+        }
+        this.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 750, Lang.bind(this, this._getActivitiesAndFillSuggestions));
+        global.log("hamster-applet on key release finished");
+
+    },
+
+    _getActivitiesAndFillSuggestions: function() {
+        let activitytext = this.textEntry.get_text().toLowerCase();
+        global.log("hamster-applet autocomplete activitytext");
         let tags = [];
         var re = /#([^,]+)/g;
         while ((m = re.exec(activitytext)) !== null) {
@@ -170,8 +213,7 @@ HamsterBox.prototype = {
             return this.autocompleteActivities;
         }
 
-
-        this.suggestionsGroup.setSensitive(false);
+        // this.suggestionsGroup.setSensitive(false);
         this.suggestionsGroup.menu.box.get_children().forEach(function(c) {
             c.destroy()
         });
@@ -192,47 +234,22 @@ HamsterBox.prototype = {
             this._fillSuggestions([this.autocompleteActivities], [tags]);
         }
 
-        return this.autocompleteActivities;
-    },
-
-    _fillSuggestions: function([activities], [tags]) {
-        // global.log("fill suggestions start, length: " + activities.length);
-        for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
-            let fact = Stuff.activityToFact([activities[i]], tags);
-            let factStr = Stuff.factToStr(fact);
-            let factItem = new FactPopupMenuItem(fact);
-            this.suggestionsGroup.menu.addMenuItem(factItem);
-            // global.log("activity: %s".format(factStr));
+        global.log("hamster-applet autocomplete finished");
+        if (this.timeoutId) {
+            this.timeoutId = null;
         }
-        // global.log("fill suggestions end");
-        if (activities.length>0) {
-            this.suggestionsGroup.setSensitive(true);
-            this.suggestionsGroup.activate(false);
-        } else {
-            this.suggestionsGroup.close(true);
-            this.suggestionsGroup.setSensitive(false);
-        }
-    },
-
-    _onKeyReleaseEvent: function(textItem, evt) {
-        let symbol = evt.get_key_symbol();
-        let text = this._textEntry.get_text().toLowerCase();
-        // let tags = [];
-
-        // ignore deletions
-        let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
-        for each (var key in ignoreKeys) {
-            if (symbol == key)
-                return;
-        }
-                
-        this._getActivitiesAndFillSuggestions(text);
-
+        return false;
     }
+
 };
 
 function HamsterApplet(metadata, orientation, panel_height) {
-    this._init(metadata, orientation, panel_height);
+
+    try {
+        this._init(metadata, orientation, panel_height);
+    } catch (e) {
+        global.logError(e);
+    }
 }
 
 HamsterApplet.prototype = {
@@ -344,12 +361,12 @@ HamsterApplet.prototype = {
 
     on_applet_clicked: function(event) {
         this.menu.toggle();
-        let text = this.activityEntry._textEntry.set_text('');
+        let text = this.activityEntry.textEntry.set_text('');
     },
 
     on_hotkey_triggered: function() {
         this.menu.toggle();
-        let text = this.activityEntry._textEntry.set_text('');
+        let text = this.activityEntry.textEntry.set_text('');
     },
 
     refreshActivities: function(proxy, sender) {
@@ -497,7 +514,7 @@ HamsterApplet.prototype = {
     }
 
     // _onActivityEntry: function() {
-    //     let text = this.activityEntry._textEntry.get_text();
+    //     let text = this.activityEntry.textEntry.get_text();
     //     this._proxy.AddFactRemote(text, 0, 0, false, Lang.bind(this, function(response, err) {
     //         // not interested in the new id - this shuts up the warning
     //     }));
@@ -571,7 +588,6 @@ FactPopupMenuItem.prototype = {
 
     _onKeyPressEvent: function(actor, evt) {
         let symbol = evt.get_key_symbol();
-        // global.log("key: " + symbol);
         if (symbol == Clutter.plus || symbol == Clutter.equal || symbol == KEYPAD_PLUS || symbol == Clutter.Page_Up) {
             this._modifySliderValue(SLIDER_STEP);
             // global.log("up");
