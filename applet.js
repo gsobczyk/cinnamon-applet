@@ -115,10 +115,10 @@ HamsterBox.prototype = {
         this.suggestionsGroup = suggestionsGroup;
         let box = new St.BoxLayout();
         box.set_vertical(true);
-
-        let label = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
-        label.set_text(_("What are you doing?"))
-        box.add(label);
+        
+        this.introLabel = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
+        this.introLabel.set_text(_("What are you doing?"))
+        box.add(this.introLabel);
 
         this.textEntry = new St.Entry({name: 'searchEntry',
             can_focus: true,
@@ -154,11 +154,16 @@ HamsterBox.prototype = {
         global.stage.set_key_focus(null);
     },
 
-    _fillSuggestions: function([activities], [tags]) {
-        //global.log("fill suggestions start, length: " + activities.length);
+    updateIntroLabel: function(shortLabel, longLabel) {
+        this.introLabel.set_text(longLabel);
+    },
+
+    _fillSuggestions: function([activities], [tags], description) {
+        global.log("fill suggestions start, length: " + activities.length);
         for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
-            let fact = Stuff.activityToFact([activities[i]], tags);
-            let factStr = Stuff.factToStr(fact);
+            let fact = Stuff.activityToFact([activities[i]], tags, description);
+            global.log("utworzono fact z opisem: " + fact.description + "  a powinno być: " + description)
+            // let factStr = Stuff.factToStr(fact);
             let factItem = new FactPopupMenuItem(fact);
             this.suggestionsGroup.menu.addMenuItem(factItem);
             // global.log("activity: %s".format(factStr));
@@ -174,37 +179,43 @@ HamsterBox.prototype = {
     },
 
     _onKeyReleaseEvent: function(textItem, evt) {
-		global.log("hamster-applet on key release start");
+		// global.log("hamster-applet on key release start");
         let symbol = evt.get_key_symbol();
 
         // ignore deletions
-        let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
+        //let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
         let ignoreKeys = [Clutter.Escape]
         for each (var key in ignoreKeys) {
             if (symbol == key)
                 return;
         }
-        if (this.timeoutId){
+        if (this.timeoutId){//w aplecie network jest chyba to lepiej zrobione, metoda _periodicUpdateIcon
             GLib.source_remove(this.timeoutId);
             this.timeoutId = null;
         }
         this.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 750, Lang.bind(this, this._getActivitiesAndFillSuggestions));
-        global.log("hamster-applet on key release finished");
+        // global.log("hamster-applet on key release finished");
 
     },
 
     _getActivitiesAndFillSuggestions: function() {
         let activitytext = this.textEntry.get_text().toLowerCase();
-        global.log("hamster-applet autocomplete activitytext");
+        // global.log("hamster-applet autocomplete activitytext");
         let tags = [];
-        var re = /#([^,]+)/g;
-        while ((m = re.exec(activitytext)) !== null) {
-            if (m.index === re.lastIndex) {
-                re.lastIndex++;
+        var tagsRegex = /#([^,#]+)/g;
+        var descRegex = /,([^#]+)/g;
+        while ((m = tagsRegex.exec(activitytext)) !== null) {
+            if (m.index === tagsRegex.lastIndex) {
+                tagsRegex.lastIndex++;
             }
             tags.push(m[1]);
         }
-        activitytext = activitytext.split('#', 1)[0].trim();
+        let description = "";
+        if ((m = descRegex.exec(activitytext)) !== null){
+            description = m[1];
+        }
+        activitytext = activitytext.split(/[#,]/, 1)[0].trim();
+        // global.log("description: " + description);
         // global.log("tagów: " + tags.length);
         // global.log("query: " + activitytext);
         // this.newTags = tags;
@@ -224,17 +235,17 @@ HamsterBox.prototype = {
                 this.runningActivitiesQuery = false;
                 this.autocompleteActivities = response;
                 this.autocompleteActivitiesText = activitytext;
-                this._fillSuggestions([this.autocompleteActivities], [tags]);
+                this._fillSuggestions([this.autocompleteActivities], [tags], description);
                 if (activitytext.trim()!=this.newActivitytext.trim()){
                     global.log("text are different: '%s' and '%s'".format(activitytext, this.newActivitytext));
                     // this._getActivitiesAndFillSuggestions(this.newActivitytext);
                 }
             }));
         } else {
-            this._fillSuggestions([this.autocompleteActivities], [tags]);
+            this._fillSuggestions([this.autocompleteActivities], [tags], description);
         }
 
-        global.log("hamster-applet autocomplete finished");
+        // global.log("hamster-applet autocomplete finished");
         if (this.timeoutId) {
             this.timeoutId = null;
         }
@@ -415,13 +426,14 @@ HamsterApplet.prototype = {
 
         this.currentActivity = null;
         let currentActivityStr = "";
-        let fact = null;
         if (facts.length) {
-            fact = facts[facts.length - 1];
+            let fact = facts[facts.length - 1];
             if (!fact.endTime) {
                 this.currentActivity = fact;
                 currentActivityStr = Stuff.factToStr(fact);
             }
+        } else {
+            let fact = null;
         }
 
         let today_duration = 0;
@@ -489,6 +501,7 @@ HamsterApplet.prototype = {
             this.set_applet_icon_symbolic_name(this._icon_name);
             this.set_applet_label("");
         }
+        this.activityEntry.updateIntroLabel(this._label_short, this._label_long);
         this.set_applet_tooltip(this._label_long);
     },
 
@@ -536,10 +549,10 @@ FactPopupMenuItem.prototype = {
         this.fact = fact;
         this.backStart = 0;
         this._proxy = new ApiProxy(Gio.DBus.session, 'org.gnome.Hamster', '/org/gnome/Hamster');
-
-        this.factNameLabel = new St.Label({ text: this._generateFactLabel(), style_class: 'fact-name'})
-        let factTags = (0 < fact.tags.length ? ("#" + fact.tags.join(", #")) : "")
-        let factTagsLabel = new St.Label({ text: " " + factTags, style_class: 'tags'})
+        this.factNameLabel = new St.Label({ text: this._generateFactLabel(), style_class: 'fact-name'});
+        let factTags = (0 < fact.tags.length ? ("#" + fact.tags.join(", #")) : "");
+        let factDescLabel = new St.Label({ text: " " + fact.description});
+        let factTagsLabel = new St.Label({ text: " " + factTags, style_class: 'tags'});
         let time = "";
         if (fact.startTime) {
             let time = "(%02d.%02d %02d:%02d)".format(fact.startTime.getDate(), fact.startTime.getMonth(), fact.startTime.getHours(), fact.startTime.getMinutes());
@@ -547,6 +560,7 @@ FactPopupMenuItem.prototype = {
         let timeLabel = new St.Label({ text: " " + time});
 
         this.addActor(this.factNameLabel);
+        this.addActor(factDescLabel, {align: St.Align.END});
         this.addActor(factTagsLabel, {align: St.Align.END});
         this.addActor(timeLabel);
 

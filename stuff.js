@@ -58,12 +58,12 @@ function fromDbusFacts(facts) {
     return res;
 };
 
-function activityToFact([activity], tags){
+function activityToFact([activity], tags, description){
     return {
         name: activity[0],
         startTime: null,
         endTime: null,
-        description: "",
+        description: description,
         activityId: null,
         category: activity[1],
         tags: tags,
