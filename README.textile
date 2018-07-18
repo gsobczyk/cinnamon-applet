@@ -16,3 +16,7 @@ ln -s /path/to/the/checkout hamster@projecthamster.wordpress.com
 You can also clone git project exactly to applets folder
 
 pre. git clone https://github.com/projecthamster/cinnamon-applet.git ~/.local/share/cinnamon/applets/hamster@projecthamster.wordpress.com
+
+Later make sure that schema is in place. Otherwise:
+
+pre. sudo cp schemas/org.cinnamon.hamster-applet.gschema.xml /usr/share/glib-2.0/schemas
