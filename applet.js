@@ -162,7 +162,7 @@ HamsterBox.prototype = {
         global.log("fill suggestions start, length: " + activities.length);
         for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
             let fact = Stuff.activityToFact([activities[i]], tags, description);
-            global.log("utworzono fact z opisem: " + fact.description + "  a powinno być: " + description)
+            // global.log("utworzono fact z opisem: " + fact.description + "  a powinno być: " + description)
             // let factStr = Stuff.factToStr(fact);
             let factItem = new FactPopupMenuItem(fact);
             this.suggestionsGroup.menu.addMenuItem(factItem);
@@ -204,12 +204,16 @@ HamsterBox.prototype = {
         let tags = [];
         var tagsRegex = /#([^,#]+)/g;
         var descRegex = /,([^#]+)/g;
-        while ((m = tagsRegex.exec(activitytext)) !== null) {
+        // global.log("przed regexem");
+        let m = tagsRegex.exec(activitytext);
+        while (m !== null) {
             if (m.index === tagsRegex.lastIndex) {
                 tagsRegex.lastIndex++;
             }
             tags.push(m[1]);
+            // global.log("w regexie");
         }
+        // global.log("po regexie");
         let description = "";
         if ((m = descRegex.exec(activitytext)) !== null){
             description = m[1];
