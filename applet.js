@@ -18,6 +18,7 @@
 
  const Applet = imports.ui.applet;
  const Clutter = imports.gi.Clutter;
+ const Cinnamon = imports.gi.Cinnamon;
  const GLib = imports.gi.GLib;
  const Gtk = imports.gi.Gtk;
  const Lang = imports.lang;
@@ -28,10 +29,11 @@
  const PopupMenu = imports.ui.popupMenu;
  const Gettext = imports.gettext;
  const _ = Gettext.gettext;
- 
+ const Util = imports.misc.util;
+
  const KEYPAD_MINUS = 65453;
  const KEYPAD_PLUS = 65451;
- const MAX_BACK_START = 180;
+ const MAX_BACK_START = 240;
  const BACK_START_STEP = 5;
  const SLIDER_STEP = BACK_START_STEP / MAX_BACK_START;
  const MAX_SUGGESTIONS = 50;
@@ -115,7 +117,7 @@ HamsterBox.prototype = {
         this.suggestionsGroup = suggestionsGroup;
         let box = new St.BoxLayout();
         box.set_vertical(true);
-        
+
         this.introLabel = new St.Label({style_class: 'popup-menu-content popup-subtitle-menu-item'});
         this.introLabel.set_text(_("What are you doing?"))
         box.add(this.introLabel);
@@ -158,13 +160,18 @@ HamsterBox.prototype = {
         this.introLabel.set_text(longLabel);
     },
 
+    _modifyTextFunc: function (text) {
+        this.textEntry.focus();
+        this.textEntry.set_text(text);
+    },
+
     _fillSuggestions: function([activities], [tags], description) {
-        global.log("fill suggestions start, length: " + activities.length);
+        // global.log("fill suggestions start, length: " + activities.length);
         for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
             let fact = Stuff.activityToFact([activities[i]], tags, description);
             // global.log("utworzono fact z opisem: " + fact.description + "  a powinno być: " + description)
             // let factStr = Stuff.factToStr(fact);
-            let factItem = new FactPopupMenuItem(fact);
+            let factItem = new FactPopupMenuItem(fact, this._modifyTextFunc, {});
             this.suggestionsGroup.menu.addMenuItem(factItem);
             // global.log("activity: %s".format(factStr));
         }
@@ -418,7 +425,7 @@ HamsterApplet.prototype = {
 
         if (err) {
             log(err);
-        } 
+        }
         if (todayFactsResp.length > 0) {
             facts = Stuff.fromDbusFacts(todayFactsResp);
         }
@@ -472,12 +479,16 @@ HamsterApplet.prototype = {
             this.recentActivities.menu.addActor(new St.Label({text: category, style_class: 'recent-group'}));
             for each (var fact in byCategoryRecent[category]) {
                 // global.log("preparing menu item for fact: " + fact.name);
-                let recent = new FactPopupMenuItem(fact, {style_class: 'recent-item'});
+                let recent = new FactPopupMenuItem(fact, this._modifyTextFunc, {style_class: 'recent-item'});
                 this.recentActivities.menu.addMenuItem(recent);
             }
         }
     },
 
+    _modifyTextFunc: function(text){
+        this.activityEntry.textEntry.focus();
+        this.activityEntry.textEntry.set_text(text);
+    },
 
     updatePanelDisplay: function(fact, today_duration) {
         // 0 = show label, 1 = show icon + duration, 2 = just icon
@@ -489,7 +500,7 @@ HamsterApplet.prototype = {
             this._label_long = this._label_short + " " + fact.name;
             this._icon_name = "hamster-tracking";
         } else {
-            this._label_short = _("No Activity");
+            this._label_short = _("No Activity") + " / " + Stuff.formatDuration(today_duration);;
             this._label_long = this._label_short;
             this._icon_name = "hamster-idle";
         }
@@ -548,8 +559,10 @@ FactPopupMenuItem.prototype = {
 
     __proto__: PopupMenu.PopupBaseMenuItem.prototype,
 
-    _init: function(fact, params) {
+    _init: function(fact, modifyTextFunc, params) {
         PopupMenu.PopupBaseMenuItem.prototype._init.call(this, params);
+        // this._modifytextfunc = modifytextfunc//this doesn't work :(
+        this._modifyTextFunc = global.log
         this.fact = fact;
         this.backStart = 0;
         this._proxy = new ApiProxy(Gio.DBus.session, 'org.gnome.Hamster', '/org/gnome/Hamster');
@@ -595,9 +608,15 @@ FactPopupMenuItem.prototype = {
         this._sliderChanged(this.slider, this.slider._value);
     },
 
+    _copyToInput: function(suffix = "") {
+        // global.log("name " + this.fact.name)
+        this._modifyTextFunc(this.fact.name + suffix)
+        // this.updateTextFunction(this.fact.name)
+    },
+
     _onStartActivity: function (actor, event) {
         let factStr = Stuff.factToStr(this.fact);
-        global.log(factStr + " - start: " + Stuff.epochSeconds());
+        //global.log(factStr + " - start: " + Stuff.epochSeconds());
         this._proxy.AddFactRemote(factStr, Stuff.epochSeconds() - this.backStart * 60, 0, false, Lang.bind(this, function(response, err) {
             // not interested in the new id - this shuts up the warning
         }));
@@ -606,6 +625,7 @@ FactPopupMenuItem.prototype = {
 
     _onKeyPressEvent: function(actor, evt) {
         let symbol = evt.get_key_symbol();
+        let modifiers = Cinnamon.get_event_state(evt);
         if (symbol == Clutter.plus || symbol == Clutter.equal || symbol == KEYPAD_PLUS || symbol == Clutter.Page_Up) {
             this._modifySliderValue(SLIDER_STEP);
             // global.log("up");
@@ -616,8 +636,16 @@ FactPopupMenuItem.prototype = {
             return Clutter.EVENT_STOP;
         } else if (symbol == Clutter.KEY_space || symbol == Clutter.KEY_Return) {
             this.activate(evt);
-            // this._onStartActivity(actor, evt);
             return Clutter.EVENT_STOP;
+        } else if (symbol == ','.charCodeAt(0) || symbol == '.'.charCodeAt(0)) {
+            this._copyToInput(",")
+            return Clutter.EVENT_STOP;
+        } else if (symbol == '#'.charCodeAt(0)) {
+            this._copyToInput("#")
+            return Clutter.EVENT_STOP;
+        } else if (modifiers & Clutter.ModifierType.CONTROL_MASK && (symbol == Clutter.C || symbol == Clutter.c)) {
+            global.log("copying" + this.fact.name);
+            copy_to_clipboard(this.fact.name)
         }
         return Clutter.EVENT_PROPAGATE;
     },
@@ -638,6 +666,15 @@ FactPopupMenuItem.prototype = {
         this.factNameLabel.set_text(this._generateFactLabel());
     }
 };
+
+function copy_to_clipboard(str) {
+    let clipboard = St.Clipboard.get_default()
+    clipboard.set_text(St.ClipboardType.CLIPBOARD, str);
+}
+
+function open(str) {
+    Util.spawn(['xdg-open', str]);
+}
 
 function main(metadata, orientation, panel_height) {
     /* Use local translations
