@@ -50,6 +50,9 @@ const ApiProxyIface = '<node> \
 <method name="GetTodaysFacts"> \
 <arg direction="out" type="a(iiissisasiib)" /> \
 </method> \
+<method name="GetTodaysFactsJSON"> \
+<arg direction="out" type="a(s)" /> \
+</method> \
 <method name="StopTracking"> \
 <arg direction="in"  type="v" name="end_time" /> \
 </method> \
@@ -61,6 +64,12 @@ const ApiProxyIface = '<node> \
 <arg direction="out" type="i" /> \
 </method> \
 <method name="GetFacts"> \
+<arg direction="in"  type="u" name="start_date" /> \
+<arg direction="in"  type="u" name="end_date" /> \
+<arg direction="in"  type="s" name="search_terms" /> \
+<arg direction="out" type="a(iiissisasiib)" /> \
+</method> \
+<method name="GetFactsLimited"> \
 <arg direction="in"  type="u" name="start_date" /> \
 <arg direction="in"  type="u" name="end_date" /> \
 <arg direction="in"  type="s" name="search_terms" /> \
@@ -242,16 +251,22 @@ HamsterBox.prototype = {
 
         if (this.autocompleteActivitiesText.trim() != activitytext.trim()){
             this.runningActivitiesQuery = true;
-            this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, function([response], err) {
+            let getActivitiesCallback = function ([response], err) {
                 this.runningActivitiesQuery = false;
                 this.autocompleteActivities = response;
                 this.autocompleteActivitiesText = activitytext;
                 this._fillSuggestions([this.autocompleteActivities], [tags], description);
-                if (activitytext.trim()!=this.newActivitytext.trim()){
+                if (activitytext.trim() != this.newActivitytext.trim()) {
                     global.log("text are different: '%s' and '%s'".format(activitytext, this.newActivitytext));
                     // this._getActivitiesAndFillSuggestions(this.newActivitytext);
                 }
-            }));
+            }
+            try {
+                this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, getActivitiesCallback));
+            } catch (e) {
+                this.proxy.GetActivitiesRemote(activitytext, Lang.bind(this, getActivitiesCallback));
+                global.logError(e)
+            }
         } else {
             this._fillSuggestions([this.autocompleteActivities], [tags], description);
         }
@@ -412,7 +427,7 @@ HamsterApplet.prototype = {
         let limit = 30;
         let ascByDate = false;
         // var todayResp = todayFacts;
-        this._proxy.GetFactsRemote(startDate, endDate, search, limit, ascByDate, Lang.bind(this, function([recentFacts], err) {
+        this._proxy.GetFactsLimitedRemote(startDate, endDate, search, limit, ascByDate, Lang.bind(this, function([recentFacts], err) {
             // global.log("retrieved " + recentFacts.length + " facts");
             this._refresh([recentFacts], [todayFacts], err);
         }));

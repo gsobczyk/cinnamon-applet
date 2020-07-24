@@ -116,7 +116,7 @@ function shortenLabel(label) {
 function factToStr(fact){
     let factStr = fact.name;
     factStr += "@" + fact.category;
-    factStr += ", " + (fact.description);
+    factStr += ",, " + (fact.description) + ',,';
     if (fact.tags.length) {
         factStr += " #" + fact.tags.join(", #");
     }
