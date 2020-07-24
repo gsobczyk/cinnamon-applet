@@ -42,7 +42,7 @@
  const AppletDir = imports.ui.appletManager.appletMeta[AppletUUID].path;
  imports.searchPath.unshift(AppletDir);
  const Stuff = imports.stuff;
- const Convenience = imports.convenience;
+ const Settings = imports.ui.settings;
 
 // dbus-send --session --type=method_call --print-reply --dest=org.gnome.Hamster /org/gnome/Hamster org.freedesktop.DBus.Introspectable.Introspect
 const ApiProxyIface = '<node> \
@@ -119,10 +119,11 @@ function HamsterBox() {
 HamsterBox.prototype = {
     __proto__: PopupMenu.PopupBaseMenuItem.prototype,
 
-    _init: function(suggestionsGroup, itemParams) {
+    _init: function(suggestionsGroup, useExternalActivities, itemParams) {
 		global.log("hamster-applet init start");
         PopupMenu.PopupBaseMenuItem.prototype._init.call(this, {reactive: false});
 
+        this.useExternalActivities = useExternalActivities
         this.suggestionsGroup = suggestionsGroup;
         let box = new St.BoxLayout();
         box.set_vertical(true);
@@ -261,11 +262,15 @@ HamsterBox.prototype = {
                     // this._getActivitiesAndFillSuggestions(this.newActivitytext);
                 }
             }
-            try {
-                this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, getActivitiesCallback));
-            } catch (e) {
+            if (this.useExternalActivities) {
+                try {
+                    this.proxy.GetExtActivitiesRemote(activitytext, Lang.bind(this, getActivitiesCallback));
+                } catch (e) {
+                    this.proxy.GetActivitiesRemote(activitytext, Lang.bind(this, getActivitiesCallback));
+                    global.logError(e)
+                }
+            } else {
                 this.proxy.GetActivitiesRemote(activitytext, Lang.bind(this, getActivitiesCallback));
-                global.logError(e)
             }
         } else {
             this._fillSuggestions([this.autocompleteActivities], [tags], description);
@@ -305,8 +310,14 @@ HamsterApplet.prototype = {
           "org.gnome.Hamster.WindowServer",
           "/org/gnome/Hamster/WindowServer");
 
-        this._settings = Convenience.getSettings();
         this.path = metadata.path;
+
+        // applet settings
+        this.settings = new Settings.AppletSettings(this, metadata.uuid, this.instance_id);
+        this.settings.bind("keyOpen", "keyOpen", this._setKeybinding);
+        this.settings.bind("panelAppearance", "panelAppearance", this._on_panel_appearance_changed);
+        this.settings.bind("useExternalActivities", "useExternalActivities");
+        this._setKeybinding();
 
         // Set initial label, icon, activity
         this._label = _("Loading...");
@@ -327,7 +338,7 @@ HamsterApplet.prototype = {
 
         // Add HamsterBox to menu
         this.suggestions = new PopupMenu.PopupSubMenuMenuItem(_("Suggestions"));
-        let item = new HamsterBox(this.suggestions);
+        let item = new HamsterBox(this.suggestions, this.useExternalActivities);
         // item.connect('activate', Lang.bind(this, this._onActivityEntry));
         this.activityEntry = item;
         this.activityEntry.proxy = this._proxy; // lazy proxying
@@ -361,11 +372,6 @@ HamsterApplet.prototype = {
         item.connect('activate', Lang.bind(this, this._onShowSettingsActivate));
         this.menu.addMenuItem(item);
 
-        // applet settings
-        item = new PopupMenu.PopupMenuItem(_("Applet Settings"));
-        item.connect('activate', Lang.bind(this, this._onAppletSettingsActivate));
-        this.menu.addMenuItem(item);
-
         // focus menu upon display
         this.menu.connect('open-state-changed', Lang.bind(this,
             function(menu, open) {
@@ -379,16 +385,6 @@ HamsterApplet.prototype = {
             }
         ));
 
-        // Add global hotkey (works in Cinnamon >= 1.8)
-        this.hotkey = "" + this._settings.get_strv("show-hamster-dropdown");
-        try {
-            Main.keybindingManager.addHotKey("show-hamster-menu",
-                this.hotkey,
-                Lang.bind(this, this.on_hotkey_triggered));
-        } catch (e) {
-            global.logError(e);
-        }
-
         // load data
         this.facts = null;
         // refresh the label every 30 secs
@@ -401,17 +397,17 @@ HamsterApplet.prototype = {
         let text = this.activityEntry.textEntry.set_text('');
     },
 
-    on_hotkey_triggered: function() {
+    _openMenu: function() {
         this.menu.toggle();
         let text = this.activityEntry.textEntry.set_text('');
     },
 
-    refreshActivities: function(proxy, sender) {
+    refreshActivities: function() {
         this.activityEntry.autocompleteActivities = [];
         this.refresh();
     },
 
-    refresh: function(proxy, sender) {
+    refresh: function() {
         if (!this.menuOpen){
             this._proxy.GetTodaysFactsRemote(Lang.bind(this, this._refreshRecent));
         } else {
@@ -500,14 +496,22 @@ HamsterApplet.prototype = {
         }
     },
 
+    _setKeybinding() {
+        Main.keybindingManager.addHotKey("hamster-open-" + this.instance_id, this.keyOpen, Lang.bind(this, this._openMenu));
+    },
+
     _modifyTextFunc: function(text){
         this.activityEntry.textEntry.focus();
         this.activityEntry.textEntry.set_text(text);
     },
 
+    _on_panel_appearance_changed: function () {
+        this.refresh()
+    },
+
     updatePanelDisplay: function(fact, today_duration) {
-        // 0 = show label, 1 = show icon + duration, 2 = just icon
-        let appearance = this._settings.get_int("panel-appearance");
+        // label, label_cion, icon
+        let appearance = this.panelAppearance;
 
         /* Format label strings and icon */
         if (fact && !fact.endTime) {
@@ -521,10 +525,10 @@ HamsterApplet.prototype = {
         }
 
         /* Configure based on appearance setting */
-        if (appearance == 0) {
+        if (appearance == "label") {
             this.set_applet_icon_symbolic_name("none");
             this.set_applet_label(Stuff.shortenLabel(this._label_long));
-        } else if (appearance == 1) {
+        } else if (appearance == "label_icon") {
             this.set_applet_icon_symbolic_name(this._icon_name);
             this.set_applet_label(Stuff.shortenLabel(this._label_short));
         } else {
@@ -552,9 +556,9 @@ HamsterApplet.prototype = {
         this._windowsProxy.preferencesSync();
     },
 
-    _onAppletSettingsActivate: function() {
-        GLib.spawn_command_line_async(this.path + '/prefs.js');
-    }
+    on_applet_removed_from_panel: function () {
+        Main.keybindingManager.removeHotKey("hamster-open-" + this.instance_id);
+    },
 
     // _onActivityEntry: function() {
     //     let text = this.activityEntry.textEntry.get_text();

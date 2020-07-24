@@ -1,0 +1,24 @@
+{
+  "panelAppearance": {
+    "type": "combobox",
+    "default": "label",
+    "options": {
+      "Just Label": "label",
+      "Icon and duration": "label_icon",
+      "Just icon": "icon"
+    },
+    "description": "Appearance in the panel."
+  },
+  "keyOpen": {
+    "type": "keybinding",
+    "description": "Show menu",
+    "default": "<Super>h",
+    "tooltip": "Set keybinding(s) to show the hamster applet menu."
+  },
+  "useExternalActivities": {
+    "type": "switch",
+    "default": false,
+    "description": "Use activities from external source",
+    "tooltip": "Needs applet restart"
+  }
+}
