@@ -179,8 +179,6 @@ HamsterBox.prototype = {
         // global.log("fill suggestions start, length: " + activities.length);
         for (var i=0; i < activities.length && i < MAX_SUGGESTIONS; i++){
             let fact = Stuff.activityToFact([activities[i]], tags, description);
-            // global.log("utworzono fact z opisem: " + fact.description + "  a powinno być: " + description)
-            // let factStr = Stuff.factToStr(fact);
             let factItem = new FactPopupMenuItem(fact, this._modifyTextFunc, {});
             this.suggestionsGroup.menu.addMenuItem(factItem);
             // global.log("activity: %s".format(factStr));
@@ -237,7 +235,6 @@ HamsterBox.prototype = {
         }
         activitytext = activitytext.split(/[#,]/, 1)[0].trim();
         // global.log("description: " + description);
-        // global.log("tagów: " + tags.length);
         // global.log("query: " + activitytext);
         // this.newTags = tags;
         this.newActivitytext = activitytext;
