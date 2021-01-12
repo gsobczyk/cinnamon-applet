@@ -200,7 +200,7 @@ HamsterBox.prototype = {
         // ignore deletions
         //let ignoreKeys = [Clutter.BackSpace, Clutter.Delete, Clutter.Escape]
         let ignoreKeys = [Clutter.Escape]
-        for each (var key in ignoreKeys) {
+        for (var key of ignoreKeys) {
             if (symbol == key)
                 return;
         }
@@ -247,7 +247,9 @@ HamsterBox.prototype = {
             c.destroy()
         });
 
-        if (this.autocompleteActivitiesText.trim() != activitytext.trim()){
+		if (activitytext.trim() == "") {
+			this._fillSuggestions([], [], description);
+		} else if (this.autocompleteActivitiesText.trim() != activitytext.trim()){
             this.runningActivitiesQuery = true;
             let getActivitiesCallback = function ([response], err) {
                 this.runningActivitiesQuery = false;
@@ -456,7 +458,7 @@ HamsterApplet.prototype = {
         }
 
         let today_duration = 0;
-        for each (var fact in facts) {
+        for (var fact of facts) {
             today_duration += fact.delta;
         }
 
@@ -471,7 +473,7 @@ HamsterApplet.prototype = {
         let categoriesRecent = [];
         let recentFactsStr = [];
         // global.log("grouping facts, size: " + recentFacts.length);
-        for each (var fact in recentFacts) {
+        for (var fact of recentFacts) {
             if (categoriesRecent.indexOf(fact.category) == -1){
                 categoriesRecent.push(fact.category);
                 byCategoryRecent[fact.category] = [];
@@ -483,9 +485,9 @@ HamsterApplet.prototype = {
             }
         }
 
-        for each (var category in categoriesRecent) {
+        for (var category of categoriesRecent) {
             this.recentActivities.menu.addActor(new St.Label({text: category, style_class: 'recent-group'}));
-            for each (var fact in byCategoryRecent[category]) {
+            for (var fact of byCategoryRecent[category]) {
                 // global.log("preparing menu item for fact: " + fact.name);
                 let recent = new FactPopupMenuItem(fact, this._modifyTextFunc, {style_class: 'recent-item'});
                 this.recentActivities.menu.addMenuItem(recent);

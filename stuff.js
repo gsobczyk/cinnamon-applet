@@ -51,7 +51,7 @@ function fromDbusFact(fact) {
 
 function fromDbusFacts(facts) {
     let res = [];
-    for each (var fact in facts) {
+    for (var fact of facts) {
         res.push(fromDbusFact(fact));
     }
 
